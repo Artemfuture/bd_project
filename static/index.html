@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>СТАНКИН · Деканат: достижения и рейтинг</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="/static/theme.css">
+</head>
+<body>
+<script>try { const th = localStorage.getItem("deanery-theme"); if (th) document.documentElement.dataset.theme = th; } catch (e) {}</script>
+<div id="app"></div>
+<div class="toasts" id="toasts"></div>
+<script>
+const ICONS = {
+  home: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/>',
+  achievements: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4"/><path d="M12 13v4M8 20h8M10 17h4"/>',
+  review: '<path d="M9 11l2 2 4-4"/><rect x="4" y="4" width="16" height="16" rx="3"/>',
+  rating: '<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-8"/><path d="M22 20H2"/>',
+  events: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+  rules: '<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="1.6" fill="currentColor"/><circle cx="15" cy="12" r="1.6" fill="currentColor"/><circle cx="10" cy="18" r="1.6" fill="currentColor"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  theme: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>',
+  logout: '<path d="M10 4H5v16h5"/><path d="M15 8l4 4-4 4"/><path d="M19 12H9"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>',
+};
+const LABELS = {
+  status: { draft: 'Черновик', 'under review': 'На проверке', confirmed: 'Подтверждено', rejected: 'Отклонено' },
+  statusTone: { draft: '', 'under review': 'warn', confirmed: 'ok', rejected: 'bad' },
+  kind: { participation: 'Участие в мероприятии', authorship: 'Научная публикация', membership: 'Членство в организации' },
+  kindShort: { participation: 'Участие', authorship: 'Публикация', membership: 'Членство' },
+  doc_type: { diploma: 'Диплом', certificate: 'Сертификат', 'certificate of honor': 'Грамота', statement: 'Справка',
+    'publication copy': 'Копия публикации', order: 'Приказ', other: 'Иное' },
+  result: { 'no place': 'Без места', '3rd place': '3 место', '2nd place': '2 место', '1st place': '1 место', 'grand prix': 'Гран-при' },
+  level: { university: 'Вузовский', regional: 'Региональный', national: 'Всероссийский', international: 'Международный' },
+  category: { scientific: 'Научная', creative: 'Творческая', sports: 'Спортивная', social: 'Общественная', olympiad: 'Олимпиадная' },
+  role: { participant: 'Участник', speaker: 'Докладчик', organizer: 'Организатор', volunteer: 'Волонтёр' },
+  event_type: { olympiad: 'Олимпиада', conference: 'Конференция', contest: 'Конкурс', competition: 'Соревнование', hackathon: 'Хакатон' },
+  source_type: { 'VAK journal': 'Журнал ВАК', 'Scopus/WoS journal': 'Журнал Scopus/WoS', 'RSCI journal': 'Журнал РИНЦ',
+    'conference proceedings': 'Сборник конференции', other: 'Прочее' },
+  org_type: { club: 'Кружок', 'student council': 'Студенческий совет', 'scientific society': 'Научное общество',
+    'sports section': 'Спортивная секция', 'creative group': 'Творческий коллектив' },
+  student_status: { studying: 'Обучается', 'academic leave': 'Академический отпуск', expelled: 'Отчислен', graduate: 'Выпускник' },
+  role_ui: { student: 'Студент', staff: 'Сотрудник деканата', lecturer: 'Преподаватель' },
+};
+const DB_MESSAGES = [
+  [/^Employee not found$/, 'Сотрудник не найден'],
+  [/^Only deanery staff can (reject|confirm|review) achievements$/, (m, v) => ({ reject: 'Отклонять', confirm: 'Подтверждать', review: 'Проверять' })[v] + ' достижения может только сотрудник деканата'],
+  [/^Achievement not found or not under review$/, 'Достижение не найдено или не находится на проверке'],
+  [/^A reason must be given when rejecting$/, 'При отклонении нужно указать причину'],
+  [/^The achievement has no supporting document$/, 'У достижения нет подтверждающего документа'],
+  [/^No event participation data for the achievement$/, 'Нет данных об участии в мероприятии'],
+  [/^No publication authorship data for the achievement$/, 'Нет данных об авторстве публикации'],
+  [/^No membership data for the achievement$/, 'Нет данных о членстве'],
+  [/^No suitable scoring rule found for the achievement$/, 'Для этого достижения нет подходящего правила начисления баллов'],
+  [/^An achievement cannot be confirmed without a supporting document$/, 'Нельзя подтвердить достижение без подтверждающего документа'],
+  [/^Only a lecturer can be a scientific supervisor$/, 'Научным руководителем может быть только преподаватель'],
+  [/^Cannot add a new achievement for an expelled student$/, 'Нельзя добавить достижение отчисленному студенту'],
+  [/^Cannot create a cycle in the event hierarchy$/, 'Нельзя создать цикл в иерархии мероприятий'],
+  [/^Employee with id (\d+) not found$/, 'Сотрудник $1 не найден'],
+  [/^Academic period with id (\d+) not found$/, 'Учебный период $1 не найден'],
+  [/^The employee who reviewed the achievement is not specified$/, 'Не указан сотрудник, проверивший достижение'],
+  [/^The review date is not specified$/, 'Не указана дата проверки'],
+];
+const EDU = window.EDU = {
+  modules: {}, me: null, L: LABELS,
+  registerModule(id, def) { this.modules[id] = def; },
+  _cache: new Map(),
+  api(path, opts = {}) {
+    const method = opts.method || 'GET';
+    if (method !== 'GET') { this._cache.clear(); return this._fetch(path, opts); }
+    const hit = this._cache.get(path);
+    if (hit && Date.now() - hit.t < 30000) return hit.p;
+    const p = this._fetch(path, opts);
+    this._cache.set(path, { t: Date.now(), p });
+    p.catch(() => this._cache.delete(path));
+    return p;
+  },
+  async _fetch(path, opts) {
+    const r = await fetch('/api' + path, {
+      method: opts.method || 'GET',
+      headers: opts.body ? { 'Content-Type': 'application/json' } : undefined,
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+    if (r.status === 401 && !opts.noAuthRedirect) { boot(); throw new Error('auth'); }
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(this.errText(data.detail, r.status));
+    return data;
+  },
+  errText(detail, status) {
+    if (Array.isArray(detail)) // ошибки проверки pydantic
+      return detail.map(d => String(d.msg || '').replace(/^Value error, /, '') + (d.type === 'value_error' ? '' : ` (${(d.loc || []).slice(1).join('.')})`)).join('; ');
+    if (typeof detail !== 'string') return 'Ошибка ' + status;
+    for (const [re, to] of DB_MESSAGES) if (re.test(detail)) return detail.replace(re, to);
+    return detail;
+  },
+  skeleton(n = 3) { return this.h('div', { class: 'timeline' }, Array.from({ length: n }, () => this.h('div', { class: 'skel' }))); },
+  h(tag, attrs = {}, ...kids) {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'class') el.className = v;
+      else if (k === 'html') el.innerHTML = v;
+      else if (k === 'value') el.value = v ?? '';
+      else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+      else if (v !== false && v != null) el.setAttribute(k, v === true ? '' : v);
+    }
+    for (const kid of kids.flat()) el.append(kid instanceof Node ? kid : document.createTextNode(kid ?? ''));
+    return el;
+  },
+  icon(name, size = 20) {
+    const s = document.createElement('span'); s.className = 'ico';
+    s.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ICONS.file}</svg>`;
+    return s;
+  },
+  lbl(group, v) { return (LABELS[group] && LABELS[group][v]) || v || '—'; },
+  date(v) { if (!v) return null; return /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(+v.slice(0, 4), +v.slice(5, 7) - 1, +v.slice(8, 10)) : new Date(v); },
+  fmtDate(v, withYear = true) { const d = this.date(v); return d ? d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', ...(withYear ? { year: 'numeric' } : {}) }).replace(' г.', '') : '—'; },
+  fmtDateTime(v) { const d = this.date(v); return d ? d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(' г.,', '') : '—'; },
+  isoToday() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; },
+  daysFrom(v) { const t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((this.date(v) - t) / 86400000); },
+  relativeDays(n) {
+    if (n < 0) return { text: 'прошло', tone: '' };
+    if (n === 0) return { text: 'сегодня', tone: 'bad' };
+    if (n === 1) return { text: 'завтра', tone: 'warn' };
+    if (n < 4) return { text: `через ${n} дн.`, tone: 'warn' };
+    return { text: `через ${n} дн.`, tone: 'ok' };
+  },
+  pts(v) { const n = Number(v); return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, ''); },
+  chip(text, tone = '') { return this.h('span', { class: 'chip ' + tone }, text); },
+  statusChip(s) { return this.chip(this.lbl('status', s), LABELS.statusTone[s] || ''); },
+  toast(msg, tone = '') {
+    const t = this.h('div', { class: 'toast ' + tone }, msg);
+    document.getElementById('toasts').append(t); setTimeout(() => t.remove(), 4500);
+  },
+  modal({ title = '', wide = false, center = false } = {}) {
+    const body = this.h('div', { class: 'sheet-body' });
+    const titleEl = this.h('h2', {}, title);
+    const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    const sheet = this.h('div', { class: 'sheet' + (wide ? ' wide' : '') },
+      this.h('div', { class: 'sheet-head' }, titleEl, this.h('button', { class: 'icon-btn', onclick: close, title: 'Закрыть' }, this.icon('close'))), body);
+    const overlay = this.h('div', { class: 'overlay' + (center ? ' center' : ''), onmousedown: (e) => { if (e.target === overlay) close(); } }, sheet);
+    document.addEventListener('keydown', onKey); document.body.append(overlay);
+    return { body, close, setTitle: (t) => { titleEl.textContent = t; } };
+  },
+  confirm({ title, text, ok = 'Подтвердить', danger = false }) {
+    return new Promise(res => {
+      const m = this.modal({ title, center: true });
+      const done = (v) => { m.close(); res(v); };
+      m.body.append(this.h('p', { style: 'margin-top:0' }, text),
+        this.h('div', { class: 'row', style: 'justify-content:flex-end;margin-top:18px' },
+          this.h('button', { class: 'btn ghost', onclick: () => done(false) }, 'Отмена'),
+          this.h('button', { class: 'btn' + (danger ? ' danger' : ''), onclick: () => done(true) }, ok)));
+    });
+  },
+  setCrumbs(parts) {
+    const el = document.getElementById('crumbs'); if (!el) return;
+    el.replaceChildren(...parts.flatMap((p, i) => [i ? ' / ' : '', i === parts.length - 1 ? this.h('b', {}, p) : p]));
+    const sheet = document.getElementById('tb-sheet');
+    if (sheet) sheet.textContent = String(parts[parts.length - 1]);
+  },
+  firstName(full) { const p = (full || '').split(/\s+/); return p[1] || p[0] || ''; },
+  shortName(full) { const [s, n, o] = (full || '').split(/\s+/); return [s, n && n[0] + '.', o && o[0] + '.'].filter(Boolean).join(' '); },
+  initials(full) { return (full || '?').split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase(); },
+  semester(d = new Date()) {
+    const m = d.getMonth() + 1, y = d.getFullYear();
+    return m >= 9 ? `${y}/${y + 1}, осень` : m === 1 ? `${y - 1}/${y}, осень` : `${y - 1}/${y}, весна`;
+  },
+  logo() {
+    const f = document.createDocumentFragment();
+    f.append(this.h('img', { class: 'logo on-light', src: '/static/brand/logo-main-color-ru.svg', alt: 'МГТУ «СТАНКИН»' }),
+      this.h('img', { class: 'logo on-dark', src: '/static/brand/logo-main-white-ru.svg', alt: 'МГТУ «СТАНКИН»' }));
+    return f;
+  },
+  toggleTheme() {
+    const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('deanery-theme', next); } catch (e) {}
+  },
+  fail(host, e) { if (e.message !== 'auth') host.replaceChildren(this.h('div', { class: 'card err' }, e.message)); },
+};
+const { h } = EDU;
+const app = document.getElementById('app');
+function renderLogin(message) {
+  const user = h('input', { id: 'u', autocomplete: 'username', placeholder: 'Логин' });
+  const pass = h('input', { id: 'p', type: 'password', autocomplete: 'current-password', placeholder: 'Пароль' });
+  const err = h('div', { class: 'err small', style: 'margin-bottom:10px;min-height:20px' }, message || '');
+  const btn = h('button', { class: 'btn block', type: 'submit' }, 'Войти');
+  const form = h('form', { class: 'login-card', onsubmit: async (e) => {
+    e.preventDefault(); btn.disabled = true; err.textContent = '';
+    try { await EDU.api('/login', { method: 'POST', body: { username: user.value, password: pass.value }, noAuthRedirect: true }); boot(); }
+    catch (ex) { err.textContent = ex.message; btn.disabled = false; }
+  } },
+    EDU.logo(),
+    h('h1', {}, 'Вход в систему'),
+    h('p', { class: 'muted' }, 'Деканат: достижения студентов и рейтинг. Логин и пароль выдаёт деканат; демонстрационные учётные записи описаны в README.'),
+    user, pass, err, btn);
+  app.replaceChildren(h('div', { class: 'login-wrap' }, h('img', { class: 'login-pattern', src: '/static/brand/pattern.svg', alt: '' }), form)); user.focus();
+}
+async function boot() {
+  const s = await fetch('/api/session').then(r => r.json()).catch(() => ({}));
+  if (!s.logged_in) return renderLogin();
+  let me, mods;
+  try { [me, mods] = await Promise.all([EDU.api('/me', { noAuthRedirect: true }), EDU.api('/modules', { noAuthRedirect: true })]); }
+  catch { return renderLogin(); }
+  EDU.me = me;
+  await Promise.all(mods.map(m => new Promise(res => {
+    if (EDU.modules[m.id]) return res();
+    const sc = document.createElement('script'); sc.src = m.script; sc.onload = res; sc.onerror = res; document.head.append(sc);
+  })));
+  const visible = mods.filter(m => !m.hidden);
+  const host = h('main', { class: 'content' });
+  const nav = h('nav', { class: 'nav' });
+  const markActive = (id) => [...nav.children].forEach(b => b.classList.toggle('active', b.dataset.id === id));
+  const show = (m, arg) => {
+    markActive(m.id);
+    host.replaceChildren(h('div', { class: 'muted' }, 'Загрузка…'));
+    const def = EDU.modules[m.id];
+    if (!def) return host.replaceChildren(h('div', { class: 'err' }, 'Нет фронтовой части модуля ' + m.id));
+    window.scrollTo(0, 0); EDU.setCrumbs([m.title]);
+    Promise.resolve(def.render(host, m, arg)).catch(ex => EDU.fail(host, ex));
+    history.replaceState(null, '', '#' + m.id);
+  };
+  EDU.show = (id, arg) => { const m = mods.find(x => x.id === id); if (m) show(m, arg); };
+  visible.forEach(m => nav.append(h('button', { 'data-id': m.id, onclick: () => show(m) }, EDU.icon(m.id), h('span', {}, m.title))));
+  const search = h('input', { type: 'text', placeholder: 'Поиск', onkeydown: (e) => {
+    if (e.key === 'Enter' && search.value.trim().length >= 2) { EDU.searchQuery = search.value.trim(); search.value = ''; search.blur(); EDU.show('search'); }
+  } });
+  const cell = (label, value, id) => h('div', {}, h('small', {}, label), h('b', id ? { id } : {}, value));
+  const action = me.role === 'student'
+    ? h('div', { class: 'side-action' }, h('button', { class: 'btn', onclick: () => EDU.newAchievement(() => EDU.show('achievements')) }, EDU.icon('plus', 18), 'Новое достижение'))
+    : '';
+  app.replaceChildren(h('div', { class: 'shell' },
+    h('aside', { class: 'side' },
+      h('div', { class: 'side-top' }, EDU.logo(), h('div', { class: 'tagline' }, 'Деканат · достижения и рейтинг')),
+      h('div', { class: 'side-scroll' }, action, nav),
+      h('div', { class: 'user' }, h('div', { class: 'avatar' }, EDU.initials(me.full_name)),
+        h('div', { class: 'who' }, h('div', {}, me.full_name), h('div', { class: 'muted small' }, EDU.lbl('role_ui', me.role))),
+        h('button', { class: 'icon-btn', title: 'Сменить тему', onclick: () => EDU.toggleTheme() }, EDU.icon('theme')),
+        h('button', { class: 'icon-btn', title: 'Выйти', onclick: async () => { await EDU.api('/logout', { method: 'POST' }); renderLogin(); } }, EDU.icon('logout')))),
+    h('div', { class: 'main' },
+      h('div', { class: 'topbar' }, h('span', { class: 'topbar-logo' }, EDU.logo()), h('div', { class: 'crumbs', id: 'crumbs' }),
+        h('div', { class: 'searchbox' }, EDU.icon('search', 16), search, h('kbd', {}, '/'))),
+      host,
+      h('div', { class: 'titleblock' },
+        cell('Пользователь', EDU.shortName(me.full_name)), cell('Лист', '', 'tb-sheet'), cell('Дата', new Date().toLocaleDateString('ru-RU')),
+        cell('Период', EDU.semester()), cell('Роль', EDU.lbl('role_ui', me.role)), cell('Вуз', 'МГТУ «СТАНКИН»')))));
+  EDU.focusSearch = () => search.focus();
+  const start = location.hash.slice(1);
+  show(visible.find(m => m.id === start) || visible[0]);
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && EDU.focusSearch) { e.preventDefault(); EDU.focusSearch(); }
+});
+</script>
+<script src="/static/shared.js"></script>
+<script>boot();</script>
+</body>
+</html>
